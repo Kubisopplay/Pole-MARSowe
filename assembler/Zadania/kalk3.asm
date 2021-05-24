@@ -24,6 +24,7 @@
 	converter: .word 1
 	wordToConvert: .word 1
 	float_one: .float 1.0
+	float_zero: .float 0.0
 	stack: .float
 	
 .text
@@ -63,28 +64,25 @@ scanInfix: 			# PrzejdŸ przez ka¿dy znak w postaci infixowej
 	addi $t1,$t1,1			# Zwiêksz pozycje infixow¹
 	lb $t4, ($t1)			# Wczytaj obecne wejœcie infixowe
 	beq $t4, ' ', scanInfix		# Jeœli spacja to zignoruj i skanuj dalej
-	beq $t4, '\n', EOF		# Skanowanie koñca ci¹gu wejœcia, => przeniesienie operatorów do postifxa
-	
-	beq $t9,1,DigitDeployToPostfix		# If state is 1 digit
-
-	
-	beq $t4,'0',store1Digit
-	beq $t4,'1',store1Digit
-	beq $t4,'2',store1Digit
-	beq $t4,'3',store1Digit
-	beq $t4,'4',store1Digit
-	beq $t4,'5',store1Digit
-	beq $t4,'6',store1Digit
-	beq $t4,'7',store1Digit
-	beq $t4,'8',store1Digit
-	beq $t4,'9',store1Digit
-	
-	continueScan:			
+	beq $t4, '\n', EndOfInput		# Skanowanie koñca ci¹gu wejœcia, => przeniesienie operatorów do postifxa
+	beq $t9,1,DigitDeployToPostfix		# Jeœli stan jest 1 to schowaj liczbe w postfixie
+	beq $t4,'0',storeDigit
+	beq $t4,'1',storeDigit
+	beq $t4,'2',storeDigit
+	beq $t4,'3',storeDigit
+	beq $t4,'4',storeDigit
+	beq $t4,'5',storeDigit
+	beq $t4,'6',storeDigit
+	beq $t4,'7',storeDigit
+	beq $t4,'8',storeDigit
+	beq $t4,'9',storeDigit
+	scanForOperators:			
 	beq $t4, '+', AdditionSubtraction
 	beq $t4, '-', AdditionSubtraction
 	beq $t4, '*', MultiplicationDivision
 	beq $t4, '/', MultiplicationDivision
 	beq $t4, '^', Exponential 		
+	beq $t4, '!', FactorialScan 		
 	beq $t4, '(', openBracket
 	beq $t4, ')', closeBracket
 	
@@ -97,31 +95,29 @@ wrongInput:			# Wykrycie b³êdu wejœcia
 	
 DigitDeployToPostfix:		#stan 2 mamy liczbê do dodania do postfixu
 	jal numberToPost
-	j continueScan		#kontynuujemy skan w poszukiwaniu operatórów +-/*
+	j scanForOperators		#kontynuujemy skan w poszukiwaniu operatórów +-/*
 
-store1Digit:
+storeDigit:
 	beq $s7,4,wrongInput		# odbieramy cyfrê po znaku: )
 	addi $s4,$t4,-48		# Przechowaj pierwsz¹ cyfrê jako liczbê
 	add $t9,$zero,1			# Zmiana statusu na 1 cyfrê w pamieci
-	li $s7,1
-	j scanInfix			#skanujemy od nowa
+	li $s7,1			# status odbierania liczby
+	j scanInfix			# skanujemy od nowa
 	
-numberToPost:
-	beq $t9,0,endnumberToPost
-	addi $t5,$t5,1
-	add $t8,$t5,$t2			
+numberToPost:				# wysy³anie cyfry do postifxa
+	beq $t9,0,endnumberToPost	# jeœli cyfry nie ma to jej nie wysy³amy OCZYWISTE
+	addi $t5,$t5,1			# przesuñ siê o 1 po postfixie
+	add $t8,$t5,$t2			# 
 	sb $s4,($t8)			# Chowaj cyfre w postfixie
 	add $t9,$zero,$zero		# Zmiana statusu na 0, nie mamy cyfr do wys³ania na postfix
 	endnumberToPost:
-	jr $ra
+	jr $ra				# WRACAMY WRACAMY !!!!
 		
 #####################################################################################################
 #KONIEC SEKCJI SKANOWANIA WYRA¯EÑ INFIXOWYCH ######## START SEKCJI OBLICZANIA WYRA¯ENIA POSTFIXOWEGO#
 #####################################################################################################
  	 	 	 	 	 	 		 	 	 	 	 	 	 	
-finishScan:
-	
-# Calculate
+finishScan:			# LICZYMY
 	li $t9,-4		# Ustaw przesniêcie wska¿nika szczytu stosu na -4
 	la $t3,stack		# £adujemy adres stosu
 	li $t6,-1		# £aduj przesuniecie postfixu do -1
@@ -131,8 +127,8 @@ calPost:
 	add $t8,$t2,$t6		# Wczytujemy adres obecnego znaku postfixu
 	lbu $t7,($t8)		# Wczytujemy jego wartoœæ
 	bgt $t6,$t5,printResult	# Liczymy dla wszystkich --> drukuj
-	bgt $t7,99,calculate	# If current Postfix > 99 --> an operator --> popout 2 number to calculate
-	# If not then current Postfix is a number
+	bgt $t7,99,calculate	# Jeœli postfix > 99 --> mamy do czynienia z operatorem
+	# Jeœli postfixowy element nie jest liczb¹
 	addi $t9,$t9,4		# Obecny wskaŸnik na stos
 	add $t4,$t3,$t9		# Adres szczytu stosu
 	sw $t7,wordToConvert	
@@ -146,10 +142,16 @@ calPost:
 		# Zwróæ 1 liczbe
 		add $t4,$t3,$t9		
 		l.s $f3,($t4)
+		
+		#############################################
+		beq $t7,133,factorial #dangerous code########
+		#############################################
+		
 		# wypluj nastêpna liczbe
-		addi $t9,$t9,-4
-		add $t4,$t3,$t9		
-		l.s $f2,($t4)
+			addi $t9,$t9,-4
+			add $t4,$t3,$t9		
+			l.s $f2,($t4)
+			
 		# dekodowanie operatorów
 		beq $t7,143,plus
 		beq $t7,145,minus
@@ -179,7 +181,6 @@ calPost:
 			s.s $f1,($t4)
 			j clearing
 		power:
-			#f2 ^ f3
 			lwc1 $f4, float_one
 			
 			sub.s $f5, $f5, $f5
@@ -196,10 +197,35 @@ calPost:
 			end_power_loop:
 			s.s $f2,($t4)
 			j clearing
-					
+		factorial:
+			#$f3!		
+			#0! = 1 
+			lwc1 $f4, float_zero
+			c.eq.s $f3, $f4
+			bc1t set_to_1 
+			
+			#1! = 1 
+			lwc1 $f4, float_one
+			c.eq.s $f3, $f4
+			bc1t set_to_1 
 	
-	
+			sub.s $f2, $f2, $f2
+			add.s $f2, $f2, $f3
+			sub.s $f2, $f2, $f4
+			loop:
+				c.eq.s $f2, $f4
+				bc1t end_loop
+				mul.s $f3, $f3, $f2
+				sub.s $f2, $f2, $f4
+			j loop
+			end_loop:
+			s.s $f3,($t4)
+			j clearing
 
+			set_to_1:
+				lwc1 $f3, float_one
+				s.s $f3,($t4)
+				j clearing
 		
 printResult:	
 	li $v0, 4
@@ -233,108 +259,137 @@ end:
  	syscall
  
 #Podprogramy
-EOF:
+#Koniec wprowadzania wejœcia
+EndOfInput:
 	beq $s7,2,wrongInput			# Jeœli input konczy sie operatorem lub lewym nawiasem (
 	beq $s7,3,wrongInput			#
 	beq $t5,-1,wrongInput			# Pusty input
 	j popAll
-
-	
-AdditionSubtraction:			# Input is + -
-	beq $s7,2,wrongInput		# Receive operator after operator or open bracket
+#####################################################################################################
+#OBS£UGA OPERATORÓW##################################################################################
+#####################################################################################################
+AdditionSubtraction:			# Otrzymujemy + -
+	beq $s7,2,wrongInput		# obs³uga sytuacji ++ lub )+
 	beq $s7,3,wrongInput
-	beq $s7,0,wrongInput		# Receive operator before any number
-	li $s7,2			# Change input status to 1
+	beq $s7,0,wrongInput		# odbieranie opreatora przed jak¹kolwiek liczb¹
+	li $s7,2			# Zmieñ status wejœcia na 1 - w³asnie uzyska³eœ operator
 	continuePlusMinus:
-	beq $t6,-1,inputToOp		# There is nothing in Operator stack --> push into
-	add $t8,$t6,$t3			# Load address of top Operator
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',inputToOp		# If top is ( --> push into
-	beq $t7,'+',equalPrecedence	# If top is + -
+	beq $t6,-1,inputToOp		# Nie ma nic na stosie operacji --> puszujemy
+	add $t8,$t6,$t3			# Wczytaj adres operatora na szczycie
+	lb $t7,($t8)			# Wczytaj wartoœæ operatora na szczycie
+	beq $t7,'(',inputToOp		# Jeœli na górze jest ( --> puszujemy
+	beq $t7,'+',equalPrecedence	# Na szczycie jest + -
 	beq $t7,'-',equalPrecedence
-	beq $t7,'*',lowerPrecedence	# If top is * /
+	beq $t7,'*',lowerPrecedence	# Szczyt to * / ^ !
 	beq $t7,'/',lowerPrecedence
-	beq $t7,'^',lowerPrecedence	#####################################
+	beq $t7,'^',lowerPrecedence	
+	beq $t7,'!',lowerPrecedence	
 	
-MultiplicationDivision:			# Input is * /
-	beq $s7,2,wrongInput		# Receive operator after operator or open bracket
+MultiplicationDivision:			# Na wejœciu * /
+	beq $s7,2,wrongInput		# INSTRUKCJE ROBI¥ TO SAMO CO WY¯EJ
 	beq $s7,3,wrongInput
-	beq $s7,0,wrongInput		# Receive operator before any number
-	li $s7,2			# Change input status to 1
-	beq $t6,-1,inputToOp		# There is nothing in Operator stack --> push into
-	add $t8,$t6,$t3			# Load address of top Operator
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',inputToOp		# If top is ( --> push into
-	beq $t7,'+',inputToOp		# If top is + - --> push into
+	beq $s7,0,wrongInput		
+	li $s7,2			
+	beq $t6,-1,inputToOp		
+	add $t8,$t6,$t3			
+	lb $t7,($t8)			
+	beq $t7,'(',inputToOp		
+	beq $t7,'+',inputToOp		
 	beq $t7,'-',inputToOp
-	beq $t7,'*',equalPrecedence	# If top is * /
+	beq $t7,'*',equalPrecedence	
 	beq $t7,'/',equalPrecedence
-	beq $t7,'^',inputToOp		#######################################################
+	beq $t7,'^',inputToOp		
+	beq $t7,'!',inputToOp		
 	
-Exponential:	###########################################
-	beq $s7,2,wrongInput		# Receive operator after operator or open bracket
+Exponential:				#Na wejœciu maj¹ znak ^
+	beq $s7,2,wrongInput		
 	beq $s7,3,wrongInput
-	beq $s7,0,wrongInput		# Receive operator before any number
-	li $s7,2			# Change input status to 1
-	beq $t6,-1,inputToOp		# There is nothing in Operator stack --> push into
-	add $t8,$t6,$t3			# Load address of top Operator
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',inputToOp		# If top is ( --> push into
-	beq $t7,'+',inputToOp		# If top is + - --> push into
+	beq $s7,0,wrongInput		
+	li $s7,2			
+	beq $t6,-1,inputToOp		
+	add $t8,$t6,$t3			
+	lb $t7,($t8)			
+	beq $t7,'(',inputToOp		
+	beq $t7,'+',inputToOp		
 	beq $t7,'-',inputToOp
-	beq $t7,'*',inputToOp		# If top is * /
+	beq $t7,'*',inputToOp		
+	beq $t7,'/',inputToOp		
+	beq $t7,'^',equalPrecedence	
+	beq $t7,'!',inputToOp		
+FactorialScan: 				# operator !
+	beq $s7,2,wrongInput		
+	beq $s7,3,wrongInput
+	beq $s7,0,wrongInput		
+	#li $s7,2			# NIE ZMIENIAMY STATUSU ISTNIENIA OPERATORA DZIA£ANIE 5!-2 JEST POPRAWNE
+	beq $t6,-1,inputToOp		
+	add $t8,$t6,$t3			
+	lb $t7,($t8)			
+	beq $t7,'(',inputToOp		
+	beq $t7,'+',inputToOp		
+	beq $t7,'-',inputToOp
+	beq $t7,'*',inputToOp		
 	beq $t7,'/',inputToOp
-	beq $t7,'^',equalPrecedence
-
-openBracket:			# Input is (
-	beq $s7,1,wrongInput		# Receive open bracket after a number or close bracket
+	beq $t7,'^',inputToOp
+	beq $t7,'!',equalPrecedence
+openBracket:			# Na wejœciu mamy (
+	beq $s7,1,wrongInput		# ( po cyfrze lub )
 	beq $s7,4,wrongInput
-	li $s7,3			# Change input status to 1
+	li $s7,3			# status na 3
 	j inputToOp
-closeBracket:			# Input is )
-	beq $s7,2,wrongInput		# Receive close bracket after an operator or operator
+closeBracket:			# Na wejœciu mamy )
+	beq $s7,2,wrongInput		# ) po operatorze
 	beq $s7,3,wrongInput	
-	li $s7,4
-	add $t8,$t6,$t3			# Load address of top Operator 
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',wrongInput		# Input contain () without anything between --> error
+	li $s7,4			
+	add $t8,$t6,$t3			
+	lb $t7,($t8)			
+	beq $t7,'(',wrongInput		# mamy () bez niczego w œrodku wiêc ERROR
 	continueCloseBracket:
-	beq $t6,-1,wrongInput		# Can't find an open bracket --> error
-	add $t8,$t6,$t3			# Load address of top Operator
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',matchBracket	# Find matched bracket
-	jal opToPostfix			# Pop the top of Operator to Postfix
-	j continueCloseBracket		# Then loop again till find a matched bracket or error			
-equalPrecedence:	# Mean receive + - and top is + - || receive * / and top is * /
-	jal opToPostfix			# Pop the top of Operator to Postfix
-	j inputToOp			# Push the new operator in
-lowerPrecedence:	# Mean receive + - and top is * /
-	jal opToPostfix			# Pop the top of Operator to Postfix
-	j continuePlusMinus		# Loop again
-inputToOp:			# Push input to Operator
-	add $t6,$t6,1			# Increment top of Operator offset
-	add $t8,$t6,$t3			# Load address of top Operator 
-	sb $t4,($t8)			# Store input in Operator
+	beq $t6,-1,wrongInput		# NIE MA NAWIASU OTWIERAJ¥CEGO wiêc ERRRRROOR
+	add $t8,$t6,$t3			
+	lb $t7,($t8)			
+	beq $t7,'(',matchBracket	# SZUKAMY PASUJ¥CEGO NAWIASU
+	jal opToPostfix			# przerzuæ góre operatorów do postfixu
+	j continueCloseBracket		# loopujem dalej a¿ znajdziemy pasuj¹cy nawias, inaczej error
+	
+#####################################################################################################
+#OBS£UGA OPERATORÓW POWY¯EJ##########################OBS£UGA HIERARCHII DZIA£AÑ PONI¯EJ##############
+#####################################################################################################
+	
+equalPrecedence:	# Otrzymaliœmy + - i na szczycie jest + - LUB mamy * / a nad nim jest * /
+	jal opToPostfix			# Wrzuæ operator do postfixu
+	j inputToOp			# pchnij nowy operator do œrodka
+	
+lowerPrecedence:	# Otrzymaliœmye + - na szczycie jest * /
+	jal opToPostfix			# wrzuæ operatory do postfixa
+	j continuePlusMinus		# Loopujemy znowu
+	
+inputToOp:				# Wejœcie do operatora
+	add $t6,$t6,1			# Zwiêksz przesuniêcie operatora
+	add $t8,$t6,$t3			# Wczytaj adres szczytu operatora
+	sb $t4,($t8)			# Trzymaj wejœcie w operatorze
+	j scanInfix			# Wracamy do skanowania
+	
+opToPostfix:				# Wrzucanie operatora do postfixa
+	addi $t5,$t5,1			# Zwiêksz przesuniêcie po postfixie
+	add $t8,$t5,$t2			# Wczytaj adres szczytu postfixu
+	#addi $t7,$t7,100		# Encode operator + 100#################################################
+	sb $t7,($t8)			# Przechowaj operator w postfixie
+	addi $t6,$t6,-1			# Zmniejsz przesuniecie po operatorze
+	jr $ra				# Wracamy wracamy
+	
+matchBracket:				# szuakmy pasuj¹cego nawiasu
+	addi $t6,$t6,-1			# zmniejsz przesuniecie po operatorze
 	j scanInfix
-opToPostfix:			# Pop top of Operator in push into Postfix
-	addi $t5,$t5,1			# Increment top of Postfix offset
-	add $t8,$t5,$t2			# Load address of top Postfix 
-	addi $t7,$t7,100		# Encode operator + 100
-	sb $t7,($t8)			# Store operator into Postfix
-	addi $t6,$t6,-1			# Decrement top of Operator offset
-	jr $ra
-matchBracket:			# Discard a pair of matched brackets
-	addi $t6,$t6,-1			# Decrement top of Operator offset
-	j scanInfix
-popAll:				# Pop all Operator to Postfix
+	
+popAll:					# Wrzuæ wszystkie operatory do postfixa
 	jal numberToPost
-	beq $t6,-1,finishScan		# Operator empty --> finish
-	add $t8,$t6,$t3			# Load address of top Operator 
-	lb $t7,($t8)			# Load byte value of top Operator
-	beq $t7,'(',wrongInput		# Unmatched bracket --> error
+	beq $t6,-1,finishScan		# nie ma operatorów to koniec skanu
+	add $t8,$t6,$t3			# wczytaj adres szczytu operatora
+	lb $t7,($t8)			# Wczytaj wartosc operatora
+	beq $t7,'(',wrongInput		# nie pasuj¹cy nawias wiec error
 	beq $t7,')',wrongInput
 	jal opToPostfix
-	j popAll			# Loop till Operator empty
+	j popAll			# zapêtlamy dopóki s¹ operatory
 
 	
 
